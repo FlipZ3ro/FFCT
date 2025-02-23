@@ -2,11 +2,11 @@ const { Telegraf, Markup } = require("telegraf");
 const { Web3 } = require("web3");
 
 // Hardcoded Environment Variables
-const BOT_TOKEN = "Token";
+const BOT_TOKEN = "TOKEN";
 const RPC_URL = "https://testnet-rpc.monad.xyz";
 const PRIVATE_KEY = "pk";
 
-const TELEGRAM_CHANNELS = ["@yogiczbaeng", "@zayfstore"];
+const TELEGRAM_CHANNELS = ["NAME CHANNEL", "NAME CHANNEL"];
 
 const web3 = new Web3(RPC_URL);
 const bot = new Telegraf(BOT_TOKEN);
@@ -23,6 +23,7 @@ web3.eth.accounts.wallet.add(faucetAccount);
 console.log("✅ Faucet Address:", faucetAccount.address);
 
 const userClaims = new Map(); // Store user claim timestamps
+const claimedAddresses = new Map(); // Store claimed wallet addresses
 const userStates = new Map(); // Track user states (e.g., awaiting wallet input)
 
 // Start command with menu
@@ -79,16 +80,23 @@ bot.on("text", async (ctx) => {
     return ctx.reply("❌ Invalid wallet address. Please enter a valid Ethereum address.");
   }
 
-  // Check if user has claimed in the last 24 hours
-  const lastClaimTime = userClaims.get(userId);
   const now = Date.now();
+  const lastClaimTime = userClaims.get(userId);
+  const lastClaimForAddress = claimedAddresses.get(userAddress);
+
+  // Cek apakah user sudah klaim dalam 24 jam terakhir
   if (lastClaimTime && now - lastClaimTime < 24 * 60 * 60 * 1000) {
     const hoursLeft = Math.ceil((24 * 60 * 60 * 1000 - (now - lastClaimTime)) / (60 * 60 * 1000));
     return ctx.reply(`❌ You can only claim once every 24 hours. Please try again in ${hoursLeft} hours.`);
   }
 
+  // Cek apakah address sudah pernah diklaim dalam 24 jam terakhir
+  if (lastClaimForAddress && now - lastClaimForAddress < 24 * 60 * 60 * 1000) {
+    return ctx.reply("❌ This wallet address has already been used to claim within the last 24 hours.");
+  }
+
   try {
-    const amount = web3.utils.toWei("0.1", "ether");
+    const amount = web3.utils.toWei("0.05", "ether");
     const pendingTx = await web3.eth.getTransactionCount(faucetAccount.address, "pending");
     const latestTx = await web3.eth.getTransactionCount(faucetAccount.address, "latest");
 
@@ -112,8 +120,11 @@ bot.on("text", async (ctx) => {
     const signedTx = await web3.eth.accounts.signTransaction(tx, "0x" + sanitizedPrivateKey);
     const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction, { transactionConfirmationBlocks: 100 });
 
-    userClaims.set(userId, now); // Store claim time AFTER successful transaction
-    ctx.reply(`✅ Sent 0.1 MON to ${userAddress}\n🔗 Tx: https://testnet.monadexplorer.com/tx/${receipt.transactionHash}`);
+    // Simpan waktu klaim user dan address
+    userClaims.set(userId, now);
+    claimedAddresses.set(userAddress, now);
+
+    ctx.reply(`✅ Sent 0.05 MON to ${userAddress}\n🔗 Tx: https://testnet.monadexplorer.com/tx/${receipt.transactionHash}`);
   } catch (error) {
     console.error("❌ Faucet Error:", error);
     let errorMessage = "❌ Transaction failed. Try again later.";
